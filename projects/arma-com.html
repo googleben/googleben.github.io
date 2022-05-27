@@ -1,0 +1,98 @@
+---
+title: ArmaCOM
+layout: default
+highlight: 
+    - cpp.min.js
+nav: {
+    isProject: true,
+    project: ArmaCOM
+} 
+---
+<h1>ArmaCOM</h1>
+<p class="header-links">
+    <a href="https://github.com/googleben/ArmaCOM">GitHub</a>
+    <a href="https://steamcommunity.com/sharedfiles/filedetails/?id=2635818948">Steam</a>
+</p>
+<h2>Description</h2>
+<p>
+    A while back I had a friend approach me asking for an extension to Arma that would allow him to communicate with an Arduino from the game, since he wanted to make physical peripherals like a compass or speedometer.
+    If you're unfamiliar, Arma 3 allows you to write scripts in-game using their (terrible) <a href="https://community.bistudio.com/wiki/SQF_Syntax">SQF language</a>.
+    Being an in-game scripting language, it's important to disallow interacting with the user's operating system for security, so you can't just directly connect to peripherals - hence the need for ArmaCOM.
+</p>
+<p>
+    My friend had been using the Arduino's <a href="https://www.arduino.cc/reference/en/language/functions/communication/serial/">USB-to-serial</a> capabilities to prototype his projects, so he asked for an API to communicate over serial ports.
+    That initially seemed to work well, but it turns out serial communications are just too slow for advanced usage, so I later implemented a TCP API as well.
+</p>
+<p>
+    The extension was an instant hit on the Steam workshop, and a lot of people in the community seemed to share my friend's vision for physical Arma peripherals.
+</p>
+<hr />
+<h2>More Information</h2>
+
+<h3>Technical Details</h3>
+<p>
+    Having been born in 2000, I had never actually used a serial port in any capacity before, so I had some Googling to do.
+    I did remember that Windows has built-in serial capabilities as a holdover from the DOS days, so my first stop was MSDN.
+    The API is a bit arcane (though that's to be expected given how old it is), but it wasn't too difficult to get a basic prototype working.
+</p>
+<p>
+    I won't go into details about the SQF API here, since I go into detail about it on the GitHub page, but what's important is that it works.
+    Using my extension, you're able to do things like list available serial ports, connect to a port, send messages, and listen for messages.
+</p>
+<p>
+    One important technical detail is that Arma 3 is almost entirely single-threaded.
+    It has no synchronization to speak of, and implements a basic scheduler to run SQF scripts (it's very easy to hang the game with a poorly-behaved script).
+    That poor design imposes restrictions on extensions, since the scheduler isn't able to force an extension to yield its time - you have to make sure any call to your extension is quick to return.
+    In the world of communication - especially slow communication like serial ports - that's a bit of an issue, since you have no idea how long it may take to send or receive a message. 
+</p>
+<p>
+    My solution to this was to make any calls to the extension that may take a long time be non-blocking (async).
+    The idea is that whenever someone connects to a serial port, the extension spins up a new thread to handle reads from the port.
+    The user can also opt to have writes be on a separate thread, but they'll have to implement error handling callbacks in that case.
+</p>
+<p>
+    When I decided to implement TCP as a solution to serial's awful speeds, a lot changed in the project.
+    First off, I added <a href="https://www.boost.org/">Boost</a> for its TCP API.
+    Second, with the program no longer being just a few hundred lines, I decided it was time to write tests.
+</p>
+<hr/>
+<h3>Adding Tests</h3>
+<p>
+    Now, "adding tests" may not sound too bad, but it's not that easy due to the way Arma extensions work.
+    Extensions are dynamically-loaded libraries (<code>.dll</code> on Windows and <code>.so</code> on Linux) with a few functions exported, specifically this one:
+</p>
+<pre><code class="language-cpp">int __stdcall RVExtensionArgs(char* output, int outputSize, const char* functionC, const char** argvC, int argc)
+</code></pre>
+<p>
+    Any time your extension is called with arguments, Arma converts those arguments to strings and calls that function.
+    Worse than having to deal with a bunch of strings is that ArmaCOM needs something to communicate <i>with</i>.
+    The test code will have to simulate serial and TCP communications.
+</p>
+<p>
+    My solution to the first problem was based on something I had read about when I first started playing around with Arma scripting.
+    A dev called "killzonekid", who wrote tutorials on how to make Arma extensions, made something called <a href="http://killzonekid.com/callextension-v2-0/">callextension</a>.
+    Callextension is a relatively primitive program to basically call <code>RVExtensionArgs</code> from a CLI app.
+</p>
+<p>
+    Remembering that, I decided to see if anyone had made a similar project to call the function from code instead, and <a href="https://github.com/maca134/Maca134.Arma.ExtensionTesterConsole">Maca134 came to the rescue</a>.
+    Sort of.
+    Maca's project is more than a little outdated and not particularly featureful, but it did remind me of C#'s excellent support for calling native code.
+    I also needed the ability to dynamically load and unload the extension to test its behavior and make sure it cleans up after itself.
+</p>
+<p>
+    Thus, <a href="https://github.com/googleben/ArmaExtensionInterface">ArmaExtensionInterface</a> was born.
+</p>
+<p>
+    With a way to call the extension from C#, I was able to make use of C# test frameworks to make <a href="https://github.com/googleben/ArmaCOM/tree/master/ArmaCOMTests">the ArmaCOMTests sub-project</a>.
+    This is pretty ideal for a few reasons, namely:
+    <ul>
+        <li>The ease of coding in C# in general</li>
+        <li>The excellent integration of tests with Visual Studio</li>
+        <li>The ease of writing tests in C#</li>
+        <li>The ease of writing communications code in C#</li>
+    </ul>
+</p>
+<p>
+    Once I had the testing working, I was able to fearlessly make changes to the extension without having to go through the arduous process of booting up Arma and writing SQF.
+    The tests also came in handy and caught quite a few subtle (and not-so-subtle) bugs - I never would have been able to get it working as well as it is without the tests.
+</p>

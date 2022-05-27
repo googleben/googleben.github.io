@@ -1,0 +1,27 @@
+[
+    {
+        "url": "/projects/java_rs.html",
+        "name": "java_rs",
+        "description": "A Java Virtual Machine (JVM) written in Rust as an experiment."
+    },
+    {
+        "url": "/projects/blaze.html",
+        "name": "Blaze",
+        "description": "A 3D video game made for a competition. Written in C# using MonoGame."
+    },
+    {
+        "url": "/projects/chance-of-precipitation.html",
+        "name": "Chance of Precipitation",
+        "description": "A 2D video game made with a classmate for a final project. Written in C# using MonoGame."
+    },
+    {
+        "url": "/projects/emerald-party-randomizer.html",
+        "name": "EmeraldPartyRandomizer",
+        "description": "A ROM hack for Pokemon Emerald. Written in C."
+    },
+    {
+        "url": "/projects/arma-com.html",
+        "name": "ArmaCOM",
+        "description": "An extension for Arma 3 for communication with external software and hardware. Written in C++ with tests in C#."
+    }
+]

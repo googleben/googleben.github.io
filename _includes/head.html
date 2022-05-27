@@ -1,0 +1,40 @@
+<head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+  
+    <title>
+        {% if page.title %}
+            {{ page.title }}
+        {% else %}
+            {{ site.title }}
+        {% endif %}
+    </title>
+  
+    {% seo title=false %}
+    {% feed_meta %}
+  
+    <link rel="shortcut icon" type="image/x-icon" href="/favicon.png" />
+    <link rel="icon" href="/favicon.png" />
+    <link rel="stylesheet" href="{{ "/assets/css/main.css" | relative_url }}" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Ubuntu&family=Ubuntu+Mono&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+    {% if site.theme_config.appearance_toggle %}
+        {% include toggle_theme_js.html %}
+    {% endif %}
+    <script src="/assets/nav-mobile.js"></script>
+    {% if page.highlight %}
+    <link rel="stylesheet" href="https://unpkg.com/@highlightjs/cdn-assets@11.4.0/styles/vs2015.min.css">
+    <script src="https://unpkg.com/@highlightjs/cdn-assets@11.4.0/highlight.min.js"></script>
+    <!-- and it's easy to individually load additional languages -->
+    {% for h in page.highlight %}
+        <script src={{ "https://unpkg.com/@highlightjs/cdn-assets@11.4.0/languages/" | append: h}}></script>
+    {% endfor %}
+    <script>
+        hljs.highlightAll();
+    </script>
+    {% endif %}
+</head>
+  

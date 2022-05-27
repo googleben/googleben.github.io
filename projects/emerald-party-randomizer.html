@@ -1,0 +1,132 @@
+---
+title: EmeraldPartyRandomizer
+layout: default
+highlight: 
+    - c.min.js
+nav: {
+    isProject: true,
+    project: EmeraldPartyRandomizer
+} 
+---
+<h1>EmeraldPartyRandomizer</h1>
+<p class="header-links">
+    <a href="https://github.com/googleben/EmeraldPartyRandomizer">GitHub</a>
+</p>
+<h2>Description</h2>
+<p>
+    EmeraldPartyRandomizer is a ROM hack for Pokemon Emerald - if you're unfamiliar, a "ROM hack" is just what mods are called for cartridge games.
+    The hack randomizes the player's party before every battle while keeping stats and XP.
+    I wrote it for a Twitch streamer and YouTuber named <a href="https://www.youtube.com/SmallAnt">SmallAnt</a>.
+    He requested it on stream one day, so I took it upon myself to write it and managed to get it done before he finished streaming that day.
+</p>
+<p>
+    A few days later, after we were sure it worked well, he started playing it on stream.
+    The stream was no more popular than most of his streams, but the videos about it he posted quickly became some of his most popular - and remains that way today.
+    Here it is:
+</p>
+<iframe width="560" height="315" src="https://www.youtube.com/embed/LtBBhlnLzs4" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+<hr />
+<h2>More Information</h2>
+
+<h3>Technical Details</h3>
+<p>
+    When I decided to make the hack, my first step was to try and figure out how you even make a ROM hack.
+    Unfortunately Google was largely unhelpful and mostly linked to people doing things like sprite swaps (skins/texture packs) and modifying maps.
+    What I wanted to do was modify the code.
+</p>
+<p>
+    Luckily (<i>extremely</i> luckily), there's a project called <a href="https://github.com/pret/pokeemerald">pokeemerald</a> that's a decompilation of the assembly into C.
+    It took a few hours to set up the compiler toolchain (thankfully <a href="https://docs.microsoft.com/en-us/windows/wsl/about">WSL</a> exists), but once I got it to compile it was pretty simple to get the hack working.
+</p>
+<p>
+    I wanted the party to be randomized every time a battle started, so the first thing to do was figure out where the code was to start a battle.
+    Thankfully the pokeemerald folks did a good job of naming <a href="https://github.com/pret/pokeemerald/blob/b59fb7637a4bfc8a32211060be111e0de30a57f1/src/battle_controllers.c"><code>battle_controllers.c</code></a>, so it didn't take me too long to figure out.
+    A bit less aptly named, but clear from its body, the function I wanted is <code>SetUpBattleVarsAndBirchZigzagoon</code>:
+</p>
+<pre><code class="language-c">void SetUpBattleVarsAndBirchZigzagoon(void)
+{
+    s32 i;
+
+    gBattleMainFunc = BeginBattleIntroDummy;
+
+    for (i = 0; i &lt; MAX_BATTLERS_COUNT; i++)
+    {
+        gBattlerControllerFuncs[i] = BattleControllerDummy;
+        gBattlerPositions[i] = 0xFF;
+        gActionSelectionCursor[i] = 0;
+        gMoveSelectionCursor[i] = 0;
+    }
+
+    HandleLinkBattleSetup();
+    gBattleControllerExecFlags = 0;
+    ClearBattleAnimationVars();
+    ClearBattleMonForms();
+    BattleAI_HandleItemUseBeforeAISetup(0xF);
+
+    if (gBattleTypeFlags &amp; BATTLE_TYPE_FIRST_BATTLE)
+    {
+        ZeroEnemyPartyMons();
+        CreateMon(&amp;gEnemyParty[0], SPECIES_ZIGZAGOON, 2, USE_RANDOM_IVS, 0, 0, OT_ID_PLAYER_ID, 0);
+        i = 0;
+        SetMonData(&amp;gEnemyParty[0], MON_DATA_HELD_ITEM, &i);
+    }
+
+    // Below are never read
+    gUnusedFirstBattleVar1 = 0;
+    gUnusedFirstBattleVar2 = 0;
+}
+</code></pre>
+<p>
+    Again, good naming comes to the rescue with the check against <code>BATTLE_TYPE_FIRST_BATTLE</code>.
+    All we need to do is add an <code>else</code> branch and call a function that randomizes the party:
+</p>
+<pre><code class="language-c">if (gBattleTypeFlags & BATTLE_TYPE_FIRST_BATTLE)
+{
+    ZeroEnemyPartyMons();
+    CreateMon(&gEnemyParty[0], SPECIES_ZIGZAGOON, 2, USE_RANDOM_IVS, 0, 0, OT_ID_PLAYER_ID, 0);
+    i = 0;
+    SetMonData(&gEnemyParty[0], MON_DATA_HELD_ITEM, &i);
+} else {
+    rndParty();
+}
+</code></pre>
+<p>
+    We don't need any arguments because this is a GameBoy game, so pretty much everything is global variables.
+    Yucky, but helpful in this case.
+    As far as the actual randomization, most of the code is handling minor details like copying EVs, nicknames, personality, etc.
+    Here's some pseudo-C describing the algorithm:
+</p>
+<pre><code class="language-c">void rndParty(void) {
+    for (int i = 0; i &lt; NUM_POKEMON_IN_PARTY; i++) {
+        rndPkmn(&amp;party[i]);
+        addPkmnToPokedex(&amp;party[i]);
+    }
+}
+void rndPkmn(struct Pokemon* mon) {
+    //the actualy code copies out all the values we need seperately, but for clarity
+    //we'll just copy the whole struct
+    struct Pokemon backupMon = *mon;
+    //generate a random number for the new species
+    short newPokemonId = Random() % (NUM_SPECIES - 1) + 1;
+    //some species numbers are invalid. 
+    //the real code attempts another random run before giving up and choosing a constant
+    if (IsSpeciesInvalid(newPokemonId)) newPokemonId = 100;
+    //set up the new pokemon
+    CreateMon(mon, newPokemonId, mon->level);
+    //copy across all the data we want to stay the same
+    copyPkmnData(mon, &amp;backupMon);
+}
+</code></pre>
+<p>
+    If you want to see the actual code you can check the GitHub, but like I said, most of it is copying values and checking edge cases.
+</p>
+<p>
+    The last detail worth mentioning is that I have a weird set up for the way the code is hosted.
+    I didn't want to copy over the entire pokeemerald repo for ~100 lines of code, so I only host a separate <code>.c</code> file containing everything except the <code>else</code> branch we added earlier.
+    So to compile the hack, you have to <code>#include</code> the <code>.c</code> file and add the <code>else</code> branch.
+    More complicated than I'd like, but better than hosting the entire other repo.
+</p>
+<p>
+    I also had issues fighting the compiler on includes and code generation since it's a bit old, so I had to copy over a few functions verbatim.
+    They're the ones that come before <code>rndParty()</code>.
+</p>

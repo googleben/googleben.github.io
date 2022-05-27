@@ -1,0 +1,102 @@
+---
+title: java_rs
+layout: default
+nav: {
+    isProject: true,
+    project: java_rs
+} 
+---
+<h1>java_rs</h1>
+<p class="header-links">
+    <a href="https://github.com/googleben/java_rs">GitHub</a>
+</p>
+<h2>Description</h2>
+<p>
+    java_rs is a project I started to learn more about the JVM, beginning as mostly a Java .class file parser and viewer, but it became a full JVM.
+    Unfortunately, it currently can't run most real Java code (the Java standard library has a lot of JVM-specific native code, so I'd have to rewrite large portions of it), and the garbage collector isn't finished, but otherwise it's fully functional for Java 1.6, and covers all of Java 1.8/8 except <code>invokedynamic</code> and related features.
+</p>
+<hr/>
+<h2>More Information</h2>
+
+<h3>Motivation and History</h3>
+<p>
+    My high school's computer science teacher (who was fantastic) would pick a handful of programming competitions specifically for high schoolers throughout the year, and anyone who had a team was allowed to attend.
+    As a freshman, when the first competition of the year was advertised during class, I was recruited by a couple of my friends to attend.
+    Of course, as kids relatively new to programming, we didn't do very well, but we had a blast and attended every competition we could from then on.
+</p>
+<p>
+    At first, we didn't take the competitions very seriously, viewing them mostly as a way to hang out while we solved some interesting problems.
+    However, when Junior year rolled around and the previous "varsity" team had graduated, it fell on us to be our school's main representatives - which is especially important because only one team represented each school in Texas' main high school competitive league, the <a href="https://www.uiltexas.org/">UIL</a>.
+</p>
+<p>
+    UIL Computer Science does have the normal "code up a solution to a challenging problem as a team" aspect, but it also included a written exam that covered a variety of entry-level CS topics such as basic data structures (trees, heaps, linked lists, etc.), postfix/prefix notation, and arithmetic in various numerical bases.
+    Strangely, though, there were always quite a few questions that tested your knowledge of Java: starting with basic syntax and OOP early in the circuit, but evolving to include more advanced topics like exact operator precedence and multiple inheritance edge cases as the statewide finals approached.
+<p>
+<p>
+    As I studied the specifics of Java, I found the easiest way was simply to read the <a href="https://docs.oracle.com/javase/specs/jls/se8/html/index.html">specification</a>.
+    What was originally a frustration with having to memorize tiny details about a programming language - which any sane developer would just look up as the need arose - turned into a fascination with the JVM.
+    Unfortunately for me, the JVM isn't the kind of thing you can learn everything about in a few days, weeks, or even months.
+</p>
+<p>
+    Eventually, just reading the spec wasn't enough to get a good understanding of what it covered, so I decided I'd have to build software based on it.
+    I started small, with just a .class file parser in a new programming language I was trying to learn, and java_rs was born.
+</p>
+<h3>Current State & Limitations</h3>
+<p>
+    As it stands, my JVM is fully capable of class loading, bytecode execution, and JNI (Java's Java-to-native code interface).
+    It can spin up, load an entry point class and all its dependencies (and their dependencies, etc), and run the <code>main</code> method to completion - that is, as long as no native standard library code is required.
+    The problem is that the Java standard library has <i>a lot</i> of native code, and that native code is strongly coupled to the JVM implementation.
+    In OpenJDK, the majority of the native interface for the stdlib is defined in <a href="https://cr.openjdk.java.net/~ngmr/vmi.00/html/jvm_8h.html">jvm.h</a>.
+    Unfortunately, it would be very difficult to reimplement the functions defined in that header for my JVM due to architectural differences, though I'll probably eventually do it.
+</p>
+<h3>Program Lifecycle Overview</h3>
+<p>
+    The first thing of note that happens is the creation of the global JVM object. 
+    This object is available behind a raw pointer to an <code>Arc&lt;RwLock&gt;</code> - the raw pointer was necessary due to limitations of optional types when the JVM was written, but can be replaced once <code>unwrap_unchecked</code> is available.
+    The global JVM object contains classpath info (as well as any jars loaded from the classpath or stdlib), all the classes that have been loaded, all the objects that have been created, all the strings that have been interned, and a few more items used in class loading.
+</p>
+<p>
+    Once the JVM is created, the entry point class is loaded.
+    Class loading is by far the most complex part of the current JVM.
+    The short version goes something like this:
+    <ol>
+        <li>Load the initial class into a stub class, noting any referenced classes</li>
+        <li>Load all classes required that are unloaded into stub classes, noting any referenced classes</li>
+        <li>If any new classes are required, return to step 2</li>
+        <li>Initialize all loaded but uninitialized classes, turning class names into actual pointers to loaded classes and filling the runtime constant pool</li>
+        <li>In the unlikely event that more classes are required, return to step 2</li>
+    </ol>
+    Once that's all done, all classes that are dependencies of the entry point class should be loaded and initialized, and we're ready for execution.
+</p>
+<p>
+    At the beginning of execution, a new thread is created with <code>main</code> as its entry point.
+    My JVM's threads are relatively simple representations of any modern language's stack: they have a stack of stack frames, and an optional pending exception.
+    The stack frames are also simple, containing primarily:
+    <ul>
+        <li>The method being executed</li>
+        <li>A reference to <code>this</code></li>
+        <li>The program counter (AKA the instruction pointer in some architectures)</li>
+        <li>The method-local stack (used by the instructions; the JVM is a stack machine)</li>
+        <li>Local variables</li>
+    </ul>
+    Ignoring JNI, that's pretty much all the information the JVM needs to run a thread.
+</p>
+<p>
+    When threads execute, they run a simple loop that goes something like this:
+    <ol>
+        <li>If the previous instruction was a return instruction, pop the current stack frame and terminate the thread if necessary</li>
+        <li>If the previous instruction was a method call, push a new stack frame</li>
+        <li>Execute the current instruction</li>
+        <li>Increment the program counter by 1</li>
+    </ol>
+    The first two steps are only necessary to avoid recursion, which wouldn't be an issue in a simpler VM, but is important so that we're not limited by Rust's stack.
+    If we weren't concerned with that, we could remove any reference to "stack frames" and store the data in local variables, implicitly using Rust's stack.
+</p>
+<p>
+    That's really all there is to the JVM from a high level, but as always the devil's in the details.
+    The step "Execute the current instruction" is actually a 1400-line function, and that's while making heavy use of helper functions.
+    Class loading is so complex (really, the Java class format is so complex) that most of it is done in an entirely separate project from the JVM, <code>java_class</code>.
+</p>
+<p>
+    If you want to learn more about the project, check out <a href="/2022/05/02/java_rs-memory-management.html">this blog post</a>.
+</p>

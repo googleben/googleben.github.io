@@ -1,0 +1,70 @@
+---
+title: Blaze
+highlight: 
+    - glsl.min.js
+layout: default
+nav: {
+    isProject: true,
+    project: Blaze
+} 
+---
+<h1>Blaze</h1>
+<p class="header-links">
+    <a href="https://github.com/googleben/Blaze">GitHub</a>
+</p>
+<h3>Description</h3>
+<p>
+    Blaze is a project I wrote for <a href="https://bpa.org/">BPA</a>'s software engineering competition; the prompt was to make a video game.
+    It's a puzzle game based on the fact that distances aren't preserved using <a href="https://en.wikipedia.org/wiki/Orthographic_projection">orthographic projection</a>.
+    From one perspective there may be an impassable chasm between two platforms, but from another perspective, they may be touching.
+    The other idea Blaze is based on is the inverse of object permanence; in Blaze, if you can't see something, it's not there.
+    That means navigating a level can require you to light up an area before you're able to stand on platforms.
+</p>
+<p>
+    The art and level design were unimportant aspects of the project to me, and I focused on the code instead.
+    Blaze was written using MonoGame, a relatively barebones framework for making games in C#.
+    I was already familiar with MonoGame, and my main purpose in choosing the design I did was to learn more about 3D rendering and 3D game development.
+    I think I picked well, since the main hurdles I came across during development were writing shaders (programs that run on graphics cards) and writing the collision handling code.
+</p>
+<h3>Demo Video</h3>
+<video src="/assets/Blaze/BlazeDemo.mp4" style="width: 100%;" controls></video>
+<hr/>
+<h3>More Information</h3>
+<h3>Shaders</h3>
+<p>
+    I had briefly come across shaders in XNA while programming my last game, Chance of Precipitation.
+    In that game, I wanted to have a visual representation of ability cooldown by "graying out" an area of the ability proportional to the cooldown.
+    That looked like this:<br/>
+    <video src="/assets/ChanceOfPrecipitation/CoPCooldown.webm" loop autoplay controls style="width: min(max(50%, 400px), 100%)"></video><br/>
+    I found that the best way to do this was to actually render the overlay as 4 triangles on the GPU; the only other choices were pixel-by-pixel, or having images for each stage of the cooldown.
+    I didn't actually have to write a shader for this, but I did have to use one, and that was enough to spark my curiosity.
+</p>
+<p>
+    For Blaze, I decided I'd learn about lighting in shaders, hence the lighting gameplay elements.
+    Unfortunately, it turns out that the hard part of lighting (occlusion) was explicitly required to be absent by my game's design, so my shaders are much simpler than they'd otherwise be.
+    In order to allow objects to cast shadows, most (non-raytracing) shaders use what's called a "shadow map."
+    Basically, you do a 360 degree render from the point of view of each light source, which tells you which pixels should be lit by that light source.
+    Then, when rendering the player's point of view, you do some math magic (unprojecting and then reprojecting) to determine if a pixel should be lit.
+</p>
+<p>
+    In Blaze, since there's no occlusion/shadows, how lit a pixel is depends only on its distance from light sources.
+    The code for that pretty much works like this (the real code looks different but it's the same idea):
+</p>
+<pre><code class="language-glsl">float totalLight = 0;
+for (light in lights) {
+    totalLight += 1 - pow(saturate(distance(light.LightPos, WorldPosition) / light.Attenuation), light.Falloff);
+}
+totalLight = saturate(totalLight);
+color.xyz *= totalLight;
+</code></pre>
+<p>
+    Despite the fact that I didn't end up implementing shadow maps in Blaze, I did at least learn a lot about them while researching how to do lighting.
+    Overall, Blaze was a great success on several fronts:
+    <ul>
+        <li>It got us to BPA Nationals</li>
+        <li>I learned a ton about 3D rendering and shaders</li>
+        <li>The gameplay turned out interesting</li>
+        <li>I had to be creative with how collision worked</li>
+        <li>I was inspired to learn more about 3D rendering</li>
+    </ul>
+</p>

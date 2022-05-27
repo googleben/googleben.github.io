@@ -1,0 +1,163 @@
+---
+title: Chance of Precipitation
+layout: default
+nav: {
+    isProject: true,
+    project: Chance of Precipitation
+} 
+---
+<h1>Chance of Precipitation</h1>
+<p class="header-links">
+    <a href="https://github.com/googleben/ChanceOfPrecipitation">GitHub</a>
+</p>
+<h3>Description</h3>
+<p>
+    Chance of Precipitation is a small 2D "game" I made with one team member for our final project in our high school's video game design class.
+    It has procedurally generated levels, 4 different abilities, and several different items to pick up or buy that can buff your character.
+</p>
+<p>
+    We were very tight on time so we did our best to polish the code and make sure the features we did have worked well, so while the game is unfortunately rather barebones, the code is actually very nice.
+    Also, we're programmers so the "art" is terrible.
+</p>
+<h3>Demo Video</h3>
+<video src="/assets/ChanceOfPrecipitation/Demo.webm" style="width: 100%;" controls></video>
+<hr/>
+<h3>More Information</h3>
+<h4>Intro</h4>
+<p>
+    At the time of writing it's been years since that class, so I don't remember the details very well, but I'll try to write down the interesting parts I do remember.
+</p>
+<p>
+    If I'm remembering correctly, the prompt for our final project was simply to "make a video game" with the tools (or, rather, tool) we had learned in the class, which essentially boils down to the XNA Framework.
+    Unfortunately for my classmates many of them took the course with far more interest in games than programming, and so struggled given that making games usually involves a lot of programming and typically math too.
+    Fortunately for me, though, I'm far more interested in programming than I am in games, so I flew through the coursework as fast as the teacher would allow and netted myself an extra few months or so to work on the final project.
+    My teammate took a bit more time than me to finish the coursework, but wasn't far behind and I believe joined me in less than a month.
+    Our first tasks were to decide what game we were making, and then to make a Scrum board roughly outlining the full process.
+</p>
+<p>
+    Deciding on the game didn't take too long; we were both interested in challenging our programming skills and learning, so simple games (like Missile Command that we made earlier in the class) were out.
+    Coming up with an original and creative idea was also out since that takes time and wasn't well suited to our skills, so we decided to model our game off of an existing game, which turned out to be <a href="https://www.riskofrain.com/">Risk of Rain</a>.
+    We then quickly settled on the parody title "Chance of Precipitation", and after only a couple hours of brainstorming, we were ready to get to work.
+</p>
+<p>
+    A particularly challenging roadblock in making any complex software in a high school class is the time constraints.
+    Our high schools allocated roughly an hour and a half to classes, which really is barely enough to do anything in a complex program given how much time is taken up by organizing your thoughts and loading the program's blueprints from your brain's long-term memory.
+    Furthermore, we were on a schedule with a period of 2 days, so we only had either 2 or 3 days per week to work - that's a combined average of 3 hours and 45 minutes of work per week.
+    Finally, an important aspect of the class was learning the basics of Agile and Scrum, which meant we had to do our daily stand-up as well, and even the handful of minutes that took up was valuable under time constraints.
+</p>
+<p>
+    Ultimately, the result of all those challenges is that once we had the basic systems required to call something a game in place (movement, title screen, pausing, etc), we only had time to put together a small few features.
+    I decided to tackle procedural generation/related code and items, while IIRC my teammate focused on abilities, movement, enemies, shops, and any other misc features.
+    We would fix any bugs as we found them, and frequently review each other's code.
+    That may sound like an unfair split, but procedural generation was a very difficult task for me at the time, having had no experience before and coming at it from scratch.
+    Plus, there were a lot of bugs in the procedural generation code.
+</p>
+<h4>Procedural Generation</h4>
+<p>
+    Writing code to procedurally generate a level was an entirely new challenge to me, and I wasn't able to find any results that we could reasonably implement, so I just sat down and thought about it for a while until an idea popped into being.
+    It seemed to me that the easiest way to do PG was to hand-make a set of "building blocks" that would then be randomly chained together in order to make a full level.
+    To make sense when put together, these building blocks would have some metadata in the form of (vertical or horizontal) "doors", places where a block may be connected to another block.
+    For example, a piece of flat ground would have a door on the left, one on the right, and at least one on the top.
+</p>
+<figure class="indented">
+    <img src="/assets/ChanceOfPrecipitation/FloorBlock.svg" style="width: min(max(125px, 50%), 100%);"/>
+    <figcaption>An example of a flat floor block. Brown blocks are terrain, green blocks are "doors".</figcaption>
+</figure>
+<p>
+    Then, the hard part was connecting them in a way so that they don't overlap.
+    For these simple flat floor blocks, that's pretty easy as long as you mark doors as used:
+</p>
+<figure class="indented">
+    <img src="/assets/ChanceOfPrecipitation/FloorBlocks.svg" style="width: min(max(125px, 75%), 100%);"/>
+    <figcaption>Two floor blocks connected.</figcaption>
+</figure>
+<p>
+    However, you start to run into problems with more complex shapes.
+    Here's an example of what may go wrong showing only "doors" and bounding boxes of building blocks:
+</p>
+<figure class="indented">
+    <img src="/assets/ChanceOfPrecipitation/ClippingBlocks.svg" style="width: min(max(125px, 50%), 100%);"/>
+    <figcaption>An arrangement of building blocks where two overlap with each other.</figcaption>
+</figure>
+<p>
+    As you can see, the red and purple blocks overlap with each other.
+    Obviously, we want to avoid overlapping, so whenever we try to add a new block to our level we need to make sure it doesn't intersect with any existing blocks.
+    This is the source of most of the problems I had writing the PG system, since usually levels would either turn out completely broken (overlapping blocks), uninteresting (few blocks or paths through the level), or the code would get stuck in an infinite loop.
+</p>
+<p>
+    With my programming experience now, I think I'd be able to write a much more robust system in much less time, but as a first attempt from a high schooler I'm quite proud of how it turned out.
+    Levels in the final product tend to be relatively interesting, and with a concerted effort I managed to get our item shops to procedurally generate within levels too.
+    With more building blocks, and particularly more game mechanics to explore across the map, the final PG system is passable for a small indie game.
+</p>
+<p>
+    There were a lot of challenges along the way writing the PG code, but they're mostly long-forgotten and not particularly interesting anyways (a lot of it was off-by-one or sign errors).
+</p>
+<p>
+    As a final note for this section, it was very important that I was careful about the asymptotic performance of the PG system.
+    A lot of it is trial and error seeing if blocks can be placed in randomly picked places, so the time complexity can easily become quadratic or worse with poor implementations.
+</p>
+<h4>Quadtrees</h4>
+<p>
+    Once procedural generation was working well enough to get large levels, it became immediately apparent that performance was an issue.
+    The game chugged like crazy on even medium-sized levels, which was completely unacceptable.
+    It was pretty easy to pin down the source of the performance issues as the collision system exclusively, which of course made good sense as the naive solution to collision checking between dynamic and static elements is O(n*k) where n is static elements and k is dynamic elements.
+    Essentially, for everything that's able to collide with the terrain, you have to check collision for every single block of terrain.
+</p>
+<p>
+    My intuition was first that perhaps the math needed to be faster, but with a bit of research I decided our math was pretty much as fast as it was going to get without GPU acceleration.
+    That left the single option of somehow pruning the list of terrain elements the code needed to check per dynamic element.
+    I had a bunch of ideas for how to do this, so to help decide which road to take I did a bit of research and found that a constant partitioning of the level space was the most fitting approach.
+</p>
+<p>
+    I believe this space partitioning (using "quadtrees" in 2D and "octrees" in 3D) is relatively common in collision systems, as it turns out to be quite efficient.
+    It's a bit hard to describe without diagrams, so I think the best way to get an idea of how it works is to look at this picture:
+</p>
+<figure class="indented">
+    <img src="/assets/ChanceOfPrecipitation/Quadtrees.png" style="width: min(max(125px, 75%), 100%);"/>
+    <figcaption>The red lines are the borders of quadtree nodes</figcaption>
+</figure>
+<p>
+    It might already be intuitive how it works just from that picture.
+    Essentially, you start by encompassing your entire level with a square.
+    Then, as long as there are more terrain elements than some constant threshold, you partition the square into quarters (the nodes of the quadtree).
+    The partitioning doesn't have to occur in every node every time; here's an example with the threshold set to only 16:
+</p>
+<figure class="indented">
+    <img src="/assets/ChanceOfPrecipitation/ManyQuadtrees.png" style="width: min(max(125px, 75%), 100%);"/>
+    <figcaption>The red lines are the borders of quadtree nodes</figcaption>
+</figure>
+<p>
+    Once the space is partitioned into quadtree nodes, you only have to check collision with the statics in the same leaf node as the character (or leaf nodes if the character is in multiple leaf nodes at once).
+    The asymptotic behavior of the collision algorithm in a vacuum hasn't changed, but due to the limit on statics it's now essentially O(k), which in practice is O(1).
+    With that change the game ran buttery smooth no matter how large the level got.
+</p>
+<p>
+    There are of course other possible optimizations, such as not checking collision for "interior" blocks that the player would never be able to collide with anyways, but those solutions are more complex and offer less performance than quadtrees.
+    Were I to make this game again now, many years later, I would probably still just use quadtrees. While perhaps slightly memory-inefficient, they work very well for 2D games.
+</p>
+<h4>Ability Cooldowns</h4>
+<p>
+    While not particularly technically interesting given my knowledge now, a part of the development that stood out to me was finding a way to show the cooldown of abilities.
+    We wanted to have a semi-transparent gray overlay over an ability that would decrease in area to show the remaining time.
+    The final product looks like this:<br/>
+    <video src="/assets/ChanceOfPrecipitation/CoPCooldown.webm" loop autoplay controls style="width: min(max(50%, 400px), 100%)"></video><br/>
+    Importantly, the animation looks very smooth; there are no jumps or jagged edges.
+    This ended up being far more difficult to implement than I expected, because it turns out <a href="https://en.wikipedia.org/wiki/Rasterisation">drawing arbitrary triangles isn't easy</a>.
+    All the solutions I found on Google avoided that issue by having discrete images for each stage of the cooldown.
+    That's fine (if wasteful and inelegant) when you know exactly how long a cooldown will take, but cooldown times are dynamic in our game.
+</p>
+<p>
+    I briefly looked at trying to draw triangles pixel-by-pixel, but that was just too complicated to implement within the very tight time constraints.
+    Instead, I discovered that XNA's 3D features would provide exactly the functionality I needed (drawing arbitrary triangles is basically what 3D rendering <i>is</i>).
+    All I had to do was learn how 3D rendering works.
+</p>
+<p>
+    Easy, right?
+</p>
+<p>
+    Of course not, but thankfully XNA makes it pretty easy to just draw some triangles on the screen without really understanding what's going on, and there are plenty of tutorials for that online.
+    It took a couple days for me to figure out exactly what XNA's <code>Effect</code>s are and how they work (turns out they're shaders), but once I got that down it was smooth sailing.
+    Like I said, the technical details aren't interesting, but what is interesting is the effect learning this stuff had on me.
+    Dipping my toes into 3D rendering here was more than enough to show me it wasn't as difficult as I had first thought, and it left my mind reeling with questions about how it all worked.
+    Ultimately, it led to the creation of both Blaze and RenderEngine, during the creation of which I learned an absolute ton of interesting information.
+</p>

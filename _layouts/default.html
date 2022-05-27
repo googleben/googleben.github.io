@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en" class="html" data-theme="{{ site.theme_config.appearance | default: "auto" }}">
+    {%- include head.html -%}
+    <body>
+        <nav class="nav-bar nav-bar-desktop">
+            <ul>
+                <li {% if page.nav.isHome %} class="current" {% endif %}><a href="/">Home</a></li>
+                <li class="{% if page.nav.isProject %}current {% endif %}dropdown">
+                    <a href="/projects.html">Projects</a>
+                    <div class="dropdown-content">
+                        {% for project in site.data.projects %}
+                            <div {% if project.name == page.nav.project %} class="current" {% endif %}>
+                                <a href="{{ project.url }}">{{ project.name }}</a>
+                            </div>
+                        {% endfor %}
+                    </div>
+                </li>
+                <li {% if page.collection == "posts" or page.nav.isBlog %} class="current" {% endif %}><a href="/blog.html">Blog</a></li>
+                <li {% if page.nav.isAbout %} class="current" {% endif %}><a href="/about.html">About Me</a></li>
+            </ul>
+        </nav>
+        <nav class="nav-bar nav-bar-mobile">
+            <a href="javascript:void(0);" class="icon" onClick="navHamburgerClick()">
+                <i class="fa fa-bars"></i>
+            </a>
+            <a href="/" style="color: white">Home</a>
+        </nav>
+        <div class="nav-mobile-inner" id="nav-mobile-inner" style="display: none;">
+            <div>
+                <ul>
+                    <li {% if page.nav.isHome %} class="current" {% endif %}><a href="/">Home</a></li>
+                    <li class="{% if page.nav.isProject %}current {% endif %}">
+                        <a href="javascript:void(0);" onclick="navProjectsClick()">Projects</a>
+                    </li>
+                    <li class="nav-bar-mobile-dropdown-content" id="nav-bar-mobile-dropdown" style="display: none">
+                        <div {% if page.nav.isProjectsHome %} class="current" {% endif %}>
+                            <a href="/projects.html">Projects Home</a>
+                        </div>
+                        {% for project in site.data.projects %}
+                            <div {% if project.name == page.nav.project %} class="current" {% endif %}>
+                                <a href="{{ project.url }}">{{ project.name }}</a>
+                            </div>
+                        {% endfor %}
+                    </li>
+                    <li {% if page.collection == "posts" or page.nav.isBlog %} class="current" {% endif %}><a href="/blog.html">Blog</a></li>
+                    <li {% if page.nav.isAbout %} class="current" {% endif %}><a href="/about.html">About Me</a></li>
+                </ul>
+            </div>
+        </div>
+        <main class="page-content" aria-label="Content">
+            <div class="w">
+                {{ content }}
+            </div>
+        </main>
+        <script>
+            document.getElementById("nav-mobile-inner").onclick = navBackgClick;
+        </script>
+    </body>
+</html>

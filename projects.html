@@ -1,0 +1,23 @@
+---
+title: Projects
+layout: default
+nav: {
+    isProject: true,
+    isProjectsHome: true
+} 
+---
+<style>
+    .w {
+        max-width: min(70vw, 1440px);
+    }
+</style>
+<div class="flex-container" style="column-gap: 1em;">
+    {% for project in site.data.projects %}
+        <div class="project-card">
+            <a href="{{ project.url }}">{{ project.name }}</a>
+            <p>
+                {{project.description}}
+            </p>
+        </div>
+    {% endfor %}
+</div>

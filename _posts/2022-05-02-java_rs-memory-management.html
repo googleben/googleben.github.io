@@ -1,0 +1,262 @@
+---
+layout: default
+title:  "Using Rust to Build a JVM"
+date:   2022-05-02
+highlight: 
+    - rust.min.js
+---
+<h1>Using Rust to Build a JVM</h1>
+<p>
+    A while back, I started my project <a href="/projects/java_rs.html">java_rs</a>, with the eventual goal of making it into a JVM (Java Virtual Machine).
+    This blog post is about a few of the choices I made writing it and the effect that Rust's safety guarantees had on the final product.
+</p>
+<p>
+    I assume you have basic knowledge about Java, and roughly Bachelor's-level knowledge of Computer Science.
+    I'll try to explain the Rust as we go, but unless you're already familiar, it may be difficult to follow.
+</p>
+<h2>Benefits of Rust</h2>
+<p>
+    java_rs is written in Rust, and anyone who's programmed in Rust before will know how difficult it is to represent reference cycles.
+    Even the extemely common doubly-linked list requires <a href="https://rust-unofficial.github.io/too-many-lists/">quite the explanation</a>.
+    Given that objects in the JVM can have arbitrary references to other objects, including themselves, I was expecting a challenge.
+</p>
+<p>
+    First off, I don't think you could actually represent JVM memory using Rust's references, so objects in java_rs are wrapped by <code>Arc</code>s and <code>RwLock</code>s.
+    If you're unfamiliar, <code>Arc</code> is the Rust stdlib's version of a thread-safe reference-counted pointer, and <code>RwLock</code> is its one-write-many-read synchronization lock (like a Mutex, but more than one thread can read at a time).
+</p>
+<p>
+    While it may seem that these types would negate many of Rust's benefits, they don't; as long as you don't use unsafe code, there are still a lot of guarantees about what you can and can't do.
+    For example, let's try to fail to release our lock on a <code>RwLock</code>:
+</p>
+<pre><code class="language-rust">
+use std::sync::*;
+
+fn test(val: RwLock&lt;i32>) {
+    val.write().unwrap()
+}
+</code></pre>
+<p>
+    Predictably, we get an error at <code>val.write().unwrap()</code> telling us the compiler expected a <code>()</code> but got a <code>RwLockWriteGuard</code>. Helpfully, it gives us a suggestion with the exact return type it's getting:
+</p>
+<pre><code class="language-rust">
+use std::sync::*;
+
+fn test(val: RwLock&lt;i32>) -> std::sync::RwLockWriteGuard&lt;'_, i32> {
+    val.write().unwrap()
+}
+</code></pre>
+<p>
+    Trying again, we get another error. It's pointing to <code>'_</code>, the lifetime argument on our new return type.
+    It says "this function's return type contains a borrowed value with an elided lifetime, but the lifetime cannot be derived from the arguments".
+    That means the compiler doesn't have enough information to tell what lifetime we mean in our return type, so we have to specify.
+    Again, it has a helpful suggestion that maybe we want to use the <code>'static</code> lifetime, which is a complicated topic but basically means "this lives forever".
+</p>
+<p>
+    In a typical program, you rarely want to use <code>'static</code> except when dealing with compile-time constants like string literals.
+    We're trying to leak our hold on a lock though, so let's go for it:
+</p>
+<pre><code class="language-rust">
+use std::sync::*;
+
+fn test(val: RwLock&lt;i32>) -> std::sync::RwLockWriteGuard&lt;'static, i32> {
+    val.write().unwrap()
+}
+</code></pre>
+<p>
+    Another error! And this time, we get to the heart of the issue. The compiler says "cannot return value referencing function parameter `val`" and that our function "returns a value referencing data owned by the current function".
+    Finally, it lets us know that we're borrowing the data when we call <code>val.write()</code>.
+</p>
+<p>
+    If you've used Rust before, that will probably make good sense, but if you haven't it's probably nonsense.
+    The exact reason this happens requires more space to explain than I care to use here, so in short, the issue is that the <code>write()</code> function references data inside our <code>RwLock</code>, but the <code>RwLock</code> itself isn't returned along with the reference.
+    That means that when the function returns, and <code>val</code> is dropped (read: deallocated/deleted), the reference would no longer be valid. And rust <i>hates</i> invalid references.
+</p>
+<p>
+    That's not to say you can't return a <code>RwLockWriteGuard</code> safely; for example, this code works just fine:
+</p>
+<pre><code class="language-rust">
+use std::sync::*;
+
+fn test(val: &RwLock&lt;i32>) -> std::sync::RwLockWriteGuard&lt;'_, i32> {
+    val.write().unwrap()
+}
+</code></pre>
+<p>
+    There's a bit of compiler magic going on here with elided references, but the idea is this time borrow of <code>val</code> occurs <i>outside</i> the function, meaning that borrow can live longer.
+    The compiler sees that the code will work just fine as long as <code>'_</code> is at most as long as our borrow of <code>val</code>.
+    We can see the relationship between the lifetime of the borrow in <code>val</code> and the <code>'_</code> is important by defining them explicitly:
+</p>
+<pre><code class="language-rust">
+use std::sync::*;
+
+fn test&lt;'a, 'b>(val: &'a RwLock&lt;i32>) -> std::sync::RwLockWriteGuard&lt;'b, i32> {
+    val.write().unwrap()
+}
+</code></pre>
+<p>
+    This code fails to compile, telling us that <code>'b</code> cannot outlive <code>'a</code> so that the reference we return can't outlive the value it points to.
+    That was possibly too much time to spend on such a small detail, but you hopefully now have some kind of understanding of the benefits Rust's extensive compile-time restrictions can have on complex and multi-threaded software like a JVM.
+</p>
+<h2>Representing Primitives and References</h2>
+<p>
+    Now, getting to my code, let's take a look at <code>JavaType</code>, which encompasses any value a variable may have in JVM bytecode:
+</p>
+<pre><code class="language-rust">
+pub enum JavaType {
+    Boolean(bool),
+    Byte(i8),
+    Short(i16),
+    Char(u16),
+    Int(i32),
+    Float(f32),
+    Long(i64),
+    Double(f64),
+    Object { class: ClassRef, fields: HashMap&lt;String, JavaType> },
+    Array { class: ClassRef, data: Box&lt;[JavaType]> },
+    Reference { class: ClassRef, val: Arc&lt;RwLock&lt;JavaType>> },
+    Null
+}
+</code></pre>
+<p>
+    There are more design decisions happening here than you might think at first. 
+    Most interesting, in my opinion, is the decision to include the <code>Object</code> and <code>Array</code> variants.
+    These variants contain the actual data contained by object and array instances, which is something JVM bytecode can never operate on - it can only use references.
+    My reasoning is that having a separate type for instances would require 1. representing arrays as objects directly, 2. having separate reference types for objects and arrays, or 3. having different array types for primitives vs. objects.
+</p>
+<p>
+    Initially, I did actually represent arrays as objects with a special instance field containing their data, but I found it to be unnecessarily clunky and not type-safe enough for my liking.
+</p>
+<p>
+    As a short aside, programmers who use Rust but not Java may be confused by the fact that the array variant uses a <code>Box</code> containing an array rather than a <code>Vec</code>.
+    As it stands, if you wanted to change the length of the array you'd have to do all the shifting of values around yourself - you'd never have to, though, because arrays in Java are fixed-length.
+</p>
+<p>
+    The last interesting design decision I'll mention here is that references are just <code>Arc&lt;RwLock></code>s.
+    The use of <code>Arc</code>s instead of a bespoke type managed by the garbage collector means the GC has to keep record of, and deallocate manually at collection times, every object ever allocated.
+    That's not great for performance, since there are a lot of performance benefits to be had with better design, but I'm not particularly interested in performance in this project, so I kept it simple.
+</p>
+<h2>Representing Shared Class Information</h2>
+<p>
+    Next up, let's check out <code>ClassRef</code>, a type that showed up several times in <code>JavaType</code>:
+</p>
+<pre><code class="language-rust">
+pub type ClassRef = &'static Class;
+</code></pre>
+<p>
+    <code>ClassRef</code> is just a convenience type alias for a reference to a <code>Class</code> with a static lifetime.
+    I'm mainly bringing this up and not skipping directly to the definition of <code>Class</code> because the use of a static reference here has a few important implications.
+    First is that we'll basically never deallocate a <code>Class</code>, but that's not a big deal since there's few circumstances you would actually want to.
+    Second is that the inside of a <code>Class</code> will be immutable pretty much immediately after construction. 
+    That's not immediately an issue, but it will be soon:
+</p>
+<pre><code class="language-rust">
+    pub struct Class {
+    pub minor_version: u16,
+    pub major_version: u16,
+    pub constant_pool: RuntimeConstantPool,
+    pub access_flags: u16,
+    pub name: String,
+    /// may be `None` if and only if this is a primitive class or java/lang/Object
+    pub super_class: Option&lt;ClassRef>,
+    pub interfaces: Vec&lt;ClassRef>,
+    pub fields: HashMap&lt;String, Field>,
+    pub instance_fields: Vec&lt;InstanceFieldInfo>,
+    pub methods: HashMap&lt;String, &'static Method>,
+    pub attributes: Vec&lt;Attribute>,
+    pub array_inner: Option&lt;ClassRef>,
+    /// whether the &lt;clinit> method has been called for this type
+    pub is_initialized: Mutex&lt;ClassInitStatus>,
+    }
+</code></pre>
+<p>
+    Most of this is pretty unremarkable, but the eagle-eyed may be seeing the issue with <code>Class</code>es being immutable.
+    <code>Class</code>es, themselves, contain <code>ClassRef</code>s, but <i>circular references are possible</i>.
+    How, then, can we possibly use plain old <code>ClassRef</code>s that don't have interior mutability, like a <code>Mutex&lt;ClassRef></code> or <code>RwLock&lt;ClassRef></code>?
+    The answer is <b>unsafe Rust</b>.
+</p>
+<p>
+    Now that you're done screaming in horror, let me explain. Despite its name, "unsafe Rust" is not <i>necessarily</i> actually unsafe.
+    The deal is just that you have to make sure any invariants the compiler expects to be upheld are upheld.
+    To explain, let's take a look at how I mutate <code>ClassRef</code>s in the code:
+</p>
+<pre><code class="language-rust">
+    unsafe {
+    let c = std::mem::transmute::&lt;ClassRef, *mut Class>(cx.0);
+    (&mut *c).initialize(&cx.1, cx.0)?;
+    }
+</code></pre>
+<p>
+    The first unsafe part of what I'm doing here is telling Rust to reinterpret <code>cx.0</code> as a <code>*mut Class</code> instead of as a <code>&'static Class</code>.
+    (<code>*mut T</code> just means a mutable raw pointer to <code>T</code>).
+    It's also unsafe to dereference a raw pointer, mutable or otherwise, but since it's coming directly from a reference we at least know it's valid (i.e. not null, not dangling, and actually containing the kind of data we expect).
+</p>
+<p>
+    By turning an (immutable) reference into a mutable raw pointer, you make a promise with the compiler not to do things it doesn't expect, the same way you promise a C++ compiler you won't use a pointer after you've freed the data it points to.
+    If you break <a href="https://doc.rust-lang.org/reference/behavior-considered-undefined.html">those promises</a>, the result is undefined behavior.
+    The most obvious invariant to uphold is that no other thread may attempt to read from the pointed-at data while you mutate it.
+    We take care of that by making sure 1. <code>Class</code>es aren't used until they're initialized, and 2. initialization is single threaded.
+</p>
+<p>
+    My code actually does fail to avoid undefined behavior though; it is technically undefined behavior to mutate data reached through a shared reference.
+    I believe this is undefined behavior in Rust primarily because of possible <a href="https://llvm.org/docs/LangRef.html#noalias">noalias</a> optimizations, but I'm not sure.
+    Discussion of noalias and the exact results of the undefined behavior here are too much for this post, but the main thing that's important is that the generated code is very probably correct in this case, and even if it's not, it's not a big deal for a toy JVM.
+    As a final note here, if it turned out to be a problem, you could solve it by using an <code>UnsafeCell</code>.
+</p>
+<p>
+    Now, for completeness' sake, I'll address the <code>Field</code> type you probably noticed if you were reading the code.
+    The type isn't anything special - it's just a bunch of information about the field, such as its type and name, along with an <code>Arc&lt;RwLock&lt;JavaType>></code> holding the actual value of the field.
+</p>
+<h2>The VM Stack</h2>
+<p>
+    The same as just about every modern language, Java uses a separate stack and heap, where the stack holds most function-local data that isn't dynamically allocated.
+    Unlike typical assembly, which typically manipulates a stack pointer directly with instructions like <code>sub sp, 20</code>, the JVM's stack is allocated only declaritavely in the binary by giving a maximum number of local variables and a maximum size of the operand stack (the JVM is a stack machine). 
+    The specification leaves it completely up to the implementation to decide how it handles "stack" data like local variables and return addresses.
+</p>
+<p>
+    If you were implementing a JVM and you were ok with using assembly (in a JIT or otherwise), you'd probably do the allocation of the JVM stack frames the exact same way you allocate other space on the stack, e.g. <code>sub sp, words_needed</code>.
+    However, I've never seen a non-assembly language allow you to allocate an array on the stack unless its length is a compile-time constant, and that includes Rust.
+    That means we can't allocate our entire JVM stack on our implementing language's stack without using something like inline assembly.
+</p>
+<p>
+    There is the option to use a fixed-size array on the stack for a portion of the JVM stack, and only heap allocating if you exceed your predefined size limit, but that's a little too much of an optimization for my toy JVM, and I'm not sure if you'd even get a performance boost on average.
+    As for inline assembly, Rust does actually have <a href="https://doc.rust-lang.org/unstable-book/library-features/asm.html">impressive support for it</a>, but again that's far beyond the (current) scope of this JVM.
+    Instead of either complex option, the stack frame is just dynamically allocated:
+</p>
+<pre><code class="language-rust">
+pub struct StackFrame {
+    pub current_method: &'static Method,
+    pub this: Option&lt;JavaType>,
+    pub pc: usize,
+    pub stack: Vec&lt;JavaType>,
+    pub locals: Vec&lt;JavaType>,
+    pub is_native: bool
+}
+</code></pre>
+<p>
+    Technically Rust is fully within its rights to allocate <code>Vec</code>s on the stack since Rust is actually capable of determining whether the vec will ever leave the scope of the function it's allocated in (or even moving it to another stack frame when ownership is transferred), but that's not really important.
+</p>
+<h2>Conclusion</h2>
+<p>
+    One of the reasons I wrote java_rs was because I was curious what kind of impact Rust's safety guarantees might have on a piece of software as complex and orthogonal to Rust's strengths as a JVM.
+    Unfortunately, I think the answer is "not much".
+    For a small, one-person project, Rust undoubtebly prevented a huge number of bugs that I otherwise would've happily coded in, but I don't think that would be a real benefit to a team making a JVM they actually indend for people to use.
+</p>
+<p>
+    The combination of coding around a garbage collector and coding around bytecode means that you're actually looking at very few locations where memory is (de)allocated.
+    In a simple JVM, allocations only really happen in three main locations:
+</p>
+<p>
+    <span style="display: block; margin-left: 1em;">1. During the loading of new classes</span>
+    <span style="display: block; margin-left: 1em;">2. During the start of a function (the stack)</span>
+    <span style="display: block; margin-left: 1em;">3. In a very small number of opcodes that directly call for it</span>
+</p>
+<p>
+    Compared to other programs similar in their <i>amount</i> of complexity but different in their <i>kind</i> of complexity, that leaves very little room for Rust to shine.
+    If I were to do it over again, and write another simple JVM, would I use Rust? Of course!
+    But that's because I've already spent a ton of time in Rust; I'm used to wrangling with the borrow checker and using the trait system.
+    Further, I find Rust's general style to be very nice, especially its enums.
+</p>
+<p>
+    If someone were to ask me whether they should pick up Rust specifically to code up a VM, I'd tell them to probably just stick with what they know.
+    I love Rust, but it turns out this problem domain just doesn't benefit much from its innovations.
+</p>
